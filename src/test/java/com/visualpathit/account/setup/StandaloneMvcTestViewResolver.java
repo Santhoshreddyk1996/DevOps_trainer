@@ -1,6 +1,7 @@
 package com.visualpathit.account.setup;
 
 import org.springframework.web.servlet.view.AbstractUrlBasedView;
+import org.springframework.web.servlet.view.InternalResourceView;
 import org.springframework.web.servlet.view.InternalResourceViewResolver;
 
 public class StandaloneMvcTestViewResolver extends InternalResourceViewResolver {
