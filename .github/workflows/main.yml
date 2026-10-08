@@ -1,0 +1,107 @@
+name: Build WF
+on: 
+  push:
+    branches:
+      - main
+
+env:
+   ECR REPOSITORY: 'vprofile'
+
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/Checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.11
+          
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip
+        
+      - name: Run Python program
+        run: python importandcallfunctions.py 9 10 &> results.txt
+
+      - name: Display results
+        run: cat results.txt
+
+      - name: Save results to repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: output-results
+          path: results.txt
+  
+  Test:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/Checkout@v4
+
+      - name: Testing Python program
+        run: pip install pytest && pytest &> test_results.txt
+      
+      - name: store test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test results
+          path: test_results.txt
+
+  security-scan:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code Checkout
+        uses: actions/Checkout@v4
+
+      - name: Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          vuln-type: 'os,library'
+          output: 'trivy-results.txt'
+      
+      - name: save security scan results
+        uses: actions/upload-artifact@v4
+        with:
+         name: security scan results
+         path: trivy-results.txt 
+  BUILD_AND_PUBLISH:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    needs: [build, Test, security-scan]
+    if : github.ref == 'refs/heads/main'
+    steps:
+      - name: Build and Publish Step
+        run: echo "Building and publishing..."
+      - name: Code Checkout
+        uses: actions/Checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{vars.AWS_REGION}}
+      - name: login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+            ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+            IMAGE_TAG: ${{ github.sha }}
+        run: |
+            docker build -f Dockerfile -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+            docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+
